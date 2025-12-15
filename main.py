@@ -23,6 +23,9 @@ class SystemController:
         print("★ 系統啟動完成，視窗已顯示，正在背景監聽 UDP Port 8888...")
     
     def stop(self):
+        print("★ 正在保存今日測量結果...")
+        self.analyzer.save_daily_record()
+
         if self.server.is_running:
             self.server.stop()
         
