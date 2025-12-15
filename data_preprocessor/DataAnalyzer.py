@@ -5,6 +5,18 @@ ALCOHOL_LIMIT           = 0.25
 HRV_FATIGUE_THRESHOLD   = 30
 HRV_BUFFER_SIZE         = 30
 
+ALCOHOL_ST = {'N': "Normal", 'D': "Drunk"}
+FATIGUE_ST = {'N': "Normal", 'F': "Fatigued", 'A': "Analyzing..."}
+
+DATA_DICT_KEY = {
+    "al": "alcohol",
+    "rr": "rr_val",
+    "hrv": "hrv_val",
+    "f_st": "fatigue_status",
+    "al_st": "alcohol_status",
+    "raw": "raw_data",
+}
+
 class DataAnalyzer():
     def __init__(self):
         self.rr_buffer = deque(maxlen=HRV_BUFFER_SIZE)
@@ -77,12 +89,12 @@ class DataAnalyzer():
 
         '''
         if hrv_score == 0:
-            return "Analyzing..."
+            return FATIGUE_ST['A']
         
         if hrv_score < HRV_FATIGUE_THRESHOLD:
-            return "Fatigued"
+            return FATIGUE_ST['F']
 
-        return "Normal"
+        return FATIGUE_ST['N']
 
     def get_alcohol_status(self, alcohol_val: float) -> str:
         '''
@@ -90,25 +102,16 @@ class DataAnalyzer():
 
         '''
         if alcohol_val > ALCOHOL_LIMIT:
-            return "Drunk"
+            return ALCOHOL_ST['D']
         
-        return "Normal"
+        return ALCOHOL_ST['N']
     
     def process(self, raw_text: str):
         '''
         Return final information dictionary from given raw data.
 
         Returns:
-            info(dict):
-                {
-                    "alcohol_val": ,
-                    "rr_val": ,
-                    "hrv_val": ,
-                    "fatigue_status": ,
-                    "alcohol_status": ,
-                    "raw_data": ,
-                }
-            or None
+            info(dict): or None
 
         '''
         parsed = self.parse_raw_data(raw_text)
@@ -121,10 +124,10 @@ class DataAnalyzer():
         alcohol_status = self.get_alcohol_status(parsed["alcohol"])
 
         return {
-            "alcohol_val": parsed["alcohol"],
-            "rr_val": parsed["rr_interval"],
-            "hrv_val": hrv,
-            "fatigue_status": fatigue_status,
-            "alcohol_status": alcohol_status,
-            "raw_data": parsed,
+            DATA_DICT_KEY["al"]: parsed["alcohol"],
+            DATA_DICT_KEY["rr"]: parsed["rr_interval"],
+            DATA_DICT_KEY["hrv"]: hrv,
+            DATA_DICT_KEY["f_st"]: fatigue_status,
+            DATA_DICT_KEY["al_st"]: alcohol_status,
+            DATA_DICT_KEY["raw"]: parsed,
         }
