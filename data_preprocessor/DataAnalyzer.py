@@ -14,6 +14,9 @@ HRV_MAX_BOUND           = 80.0
 HRV_MIN_BOUND           = 20.0
 DEFAULT_HRV_BASELINE    = 50.0
 
+MIN_HR = 40
+MAX_HR = 150
+
 ALCOHOL_ST = {'N': "Normal", 'D': "Drunk", 'W': "Waiting..."}
 FATIGUE_ST = {
     'N': "Normal",
@@ -112,9 +115,11 @@ class DataAnalyzer():
                 if key == 'A':
                     data["alcohol"] = float(val)
                 elif key == 'R':
-                    data["hr"] = int(val)
+                    val = int(val)
+                    data["hr"] = int(1/(1+(np.exp(-(val/MAX_HR)))) * val)
                 elif key == "HRV":
-                    data["hrv"] = float(val)
+                    val = float(val)
+                    data["hrv"] = 1/(1+(np.exp(-(val/HRV_MAX_BOUND)))) * val
             
             data["valid"] = True
         
@@ -149,9 +154,12 @@ class DataAnalyzer():
         if hrv_score == 0:
             return FATIGUE_ST['A']
         
-        if hrv_score < HRV_FATIGUE_THRESHOLD:
+        if hrv_score < (self.baseline_hrv * 0.7):
             return FATIGUE_ST['F']
-
+        
+        if hrv_score > (self.baseline_hrv * 1.3): 
+            return FATIGUE_ST['U']
+            
         return FATIGUE_ST['B']
 
     def get_alcohol_status(self, alcohol_val: float) -> str:
