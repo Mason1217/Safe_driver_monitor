@@ -6,7 +6,7 @@ from collections import deque
 
 HISTORY_FILE = "hrv_history.json"
 
-ALCOHOL_LIMIT           = 0.25
+ALCOHOL_LIMIT           = 150
 HRV_FATIGUE_THRESHOLD   = 30
 HRV_BUFFER_SIZE         = 30
 
@@ -14,8 +14,8 @@ HRV_MAX_BOUND           = 80.0
 HRV_MIN_BOUND           = 20.0
 DEFAULT_HRV_BASELINE    = 50.0
 
-MIN_HR = 40
-MAX_HR = 150
+MIN_HR = 30
+MAX_HR = 200
 
 ALCOHOL_ST = {'N': "Normal", 'D': "Drunk", 'W': "Waiting..."}
 FATIGUE_ST = {
@@ -114,13 +114,21 @@ class DataAnalyzer():
 
                 if key == 'A':
                     data["alcohol"] = float(val)
+
                 elif key == 'R':
                     val = int(val)
-                    data["hr"] = int(1/(1+(np.exp(-(val/MAX_HR)))) * val)
+                    if val > MAX_HR:
+                        data["hr"] = MAX_HR
+                    else:
+                        data["hr"] = val
+
                 elif key == "HRV":
                     val = float(val)
-                    data["hrv"] = 1/(1+(np.exp(-(val/HRV_MAX_BOUND)))) * val
-            
+                    if val > HRV_MAX_BOUND:
+                        data["hrv"] = HRV_MAX_BOUND
+                    else:
+                        data["hrv"] = val
+
             data["valid"] = True
         
         except ValueError as e:
@@ -135,7 +143,7 @@ class DataAnalyzer():
         Calculate degree of fatigue based on hrv_val
 
         '''
-        if hrv_val == 0: return -1
+        if hrv_val == 0: return 100
 
         if hrv_val <= HRV_MIN_BOUND: return 100
         if hrv_val >= HRV_MAX_BOUND: return 0
@@ -173,35 +181,32 @@ class DataAnalyzer():
             return ALCOHOL_ST['D']
         
         return ALCOHOL_ST['N']
-    
-    def process(self, raw_text: str):
+
+    def process(self, data: dict):
         '''
-        Return final information dictionary from given raw data.
+        Return final information dictionary from given data.
 
         Returns:
             info(dict): or None
 
         '''
-        parsed = self.parse_raw_data(raw_text)
-
-        if not parsed["valid"]:
-            return None
-        
-        hrv = parsed.get("hrv")
-        fatigue_idx = self.cal_fatigue_idx(hrv)
-        fatigue_status = self.get_fatigue_status(hrv)
-        alcohol_status = self.get_alcohol_status(parsed.get("alcohol"))
+        alcohol = float(data.get("AC", 0))
+        hr = int(data.get("HR", 0))
+        hrv = float(data.get("HRV", 0))
 
         if hrv > 0:
             self.today_measurements.append(hrv)
+        
+        fatigue_idx = self.cal_fatigue_idx(hrv)
+        fatigue_status = self.get_fatigue_status(hrv)
+        alcohol_status = self.get_alcohol_status(alcohol)
 
         return {
-            DATA_DICT_KEY["al"]: parsed["alcohol"],
-            DATA_DICT_KEY["hr"]: parsed["hr"],
+            DATA_DICT_KEY["al"]: alcohol,
+            DATA_DICT_KEY["hr"]: hr,
             DATA_DICT_KEY["hrv"]: hrv,
             DATA_DICT_KEY["f_idx"]: fatigue_idx,
             DATA_DICT_KEY["f_st"]: fatigue_status,
             DATA_DICT_KEY["al_st"]: alcohol_status,
-            DATA_DICT_KEY["raw"]: parsed,
             DATA_DICT_KEY["base"]: self.baseline_hrv,
         }
