@@ -13,13 +13,10 @@ from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtCore import Qt
 import pyqtgraph as pg
 
-from data_preprocessor.DataAnalyzer import DATA_DICT_KEY, ALCOHOL_ST, FATIGUE_ST
+from data_preprocessor.DataAnalyzer import DATA_DICT_KEY, ALCOHOL_ST, FATIGUE_ST, MAX_HR, MIN_HR
 
 pg.setConfigOption("background", 'w')
 pg.setConfigOption("foreground", 'k')
-
-MIN_HR = 40
-MAX_HR = 150
 
 class MonitorWindow(QMainWindow):
     def __init__(self):
