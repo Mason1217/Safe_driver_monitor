@@ -1,39 +1,103 @@
+import os
+import json
+import random
 import numpy as np
 from collections import deque
+
+HISTORY_FILE = "hrv_history.json"
 
 ALCOHOL_LIMIT           = 0.25
 HRV_FATIGUE_THRESHOLD   = 30
 HRV_BUFFER_SIZE         = 30
 
-ALCOHOL_ST = {'N': "Normal", 'D': "Drunk"}
-FATIGUE_ST = {'N': "Normal", 'F': "Fatigued", 'A': "Analyzing..."}
+HRV_MAX_BOUND           = 80.0
+HRV_MIN_BOUND           = 20.0
+DEFAULT_HRV_BASELINE    = 50.0
+
+ALCOHOL_ST = {'N': "Normal", 'D': "Drunk", 'W': "Waiting..."}
+FATIGUE_ST = {
+    'N': "Normal",
+    'F': "Fatigued",
+    'A': "Analyzing...",
+    'B': "Balanced",
+    'U': "Unbalanced",
+    'L': "Low",
+}
 
 DATA_DICT_KEY = {
     "al": "alcohol",
-    "rr": "rr_val",
+    "hr": "heart_rate",
     "hrv": "hrv_val",
+    "f_idx": "fatigue_index",
     "f_st": "fatigue_status",
     "al_st": "alcohol_status",
     "raw": "raw_data",
+    "base": "baseline_hrv"
 }
 
 class DataAnalyzer():
     def __init__(self):
         self.rr_buffer = deque(maxlen=HRV_BUFFER_SIZE)
+        self.history_data = self.load_history()
+        self.baseline_hrv = self.cal_baseline()
+        self.today_measurements = []
+
+        print(f"[System] 目前 7 天平均基線 (Baseline): {self.baseline_hrv:.2f}")
+
+    def save_daily_record(self):
+        if not self.today_measurements:
+            print("[System] 本次運行無有效 HRV 數據，跳過存檔。")
+            return
+        
+        today_avg = int(round(np.mean(self.today_measurements), 2))
+        print(f"[System] 本次測量平均 HRV: {today_avg}，正在更新歷史紀錄...")
+
+        self.history_data.append(today_avg)
+        if len(self.history_data) > 7:
+            self.history_data.pop(0)
+
+        self.save_history(self.history_data)
+        print(f"[System] 歷史紀錄已更新 (最近7筆): {self.history_data}")
+
+    def load_history(self) -> list:
+        if os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, 'r') as f:
+                    data = json.load(f)
+                    return data
+            except Exception as e:
+                print(f"讀取歷史失敗: {e}，將建立新檔")
+        
+        mock_data = [random.randint(50, 70) for _ in range(6)]
+        self.save_history(mock_data)
+
+        return mock_data
     
+    def save_history(self, data: list):
+        try:
+            with open(HISTORY_FILE, 'w') as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"存檔失敗: {e}")
+
+    def cal_baseline(self) -> float:
+        if not self.history_data:
+            return DEFAULT_HRV_BASELINE
+        return float(np.mean(self.history_data))
+
     def parse_raw_data(self, text: str) -> dict:
         '''
         Parse string from server.\n
         Expecting format = "A:0.05,R:800,S:0"
 
         Returns:
-            each value(dict): {"alcohol": 0.0, "rr_interval": 0, "button_status": 0, "valid": False}
+            each value(dict): {"alcohol": 0.0, "hr": 0, "hrv": 0, "valid": False}
 
         '''
         data = {
             "alcohol": 0.0,
-            "rr_interval": 0,
-            "button_status": 0,
+            "hr": 0,
+            "hrv": 0,
             "valid": False,
         }
 
@@ -48,9 +112,9 @@ class DataAnalyzer():
                 if key == 'A':
                     data["alcohol"] = float(val)
                 elif key == 'R':
-                    data["rr_interval"] = int(val)
-                elif key == 'S':
-                    data["button_status"] = int(val)
+                    data["hr"] = int(val)
+                elif key == "HRV":
+                    data["hrv"] = float(val)
             
             data["valid"] = True
         
@@ -61,28 +125,22 @@ class DataAnalyzer():
         
         return data
 
-    def cal_hrv(self, rr_val: int) -> float:
+    def cal_fatigue_idx(self, hrv_val: float) -> int:
         '''
-        Receive new RR interval ,then update buffer and calculate HRV (SDNN).\n
-        Note: SDNN = Standard Deviation of NN intervals.
-
-        Returns:
-            hrv_sdnn(float): 
+        Calculate degree of fatigue based on hrv_val
 
         '''
-        if rr_val <= 0 or rr_val > 2000:
-            return 0.0
-        
-        self.rr_buffer.append(rr_val)
+        if hrv_val == 0: return -1
 
-        if len(self.rr_buffer) < 5:
-            return 0.0
-        
-        # ddof = 1 for sample standard deviation
-        hrv_sdnn = np.std(self.rr_buffer, ddof=1)
+        if hrv_val <= HRV_MIN_BOUND: return 100
+        if hrv_val >= HRV_MAX_BOUND: return 0
 
-        return round(hrv_sdnn, 2)
-    
+        ratio = (hrv_val - HRV_MIN_BOUND) / (HRV_MAX_BOUND - HRV_MIN_BOUND)
+        fatigue_idx = (1.0 - ratio) * 100
+
+        return int(fatigue_idx)
+
+
     def get_fatigue_status(self, hrv_score: float) -> str:
         '''
         Return status(Normal \ Fatigued) according to given hrv_score.
@@ -94,13 +152,15 @@ class DataAnalyzer():
         if hrv_score < HRV_FATIGUE_THRESHOLD:
             return FATIGUE_ST['F']
 
-        return FATIGUE_ST['N']
+        return FATIGUE_ST['B']
 
     def get_alcohol_status(self, alcohol_val: float) -> str:
         '''
         Return status(Normal \ Drunk) according to given alcohol_val.
 
         '''
+        if alcohol_val is None: return ALCOHOL_ST['W']
+
         if alcohol_val > ALCOHOL_LIMIT:
             return ALCOHOL_ST['D']
         
@@ -119,15 +179,21 @@ class DataAnalyzer():
         if not parsed["valid"]:
             return None
         
-        hrv = self.cal_hrv(parsed["rr_interval"])
+        hrv = parsed.get("hrv")
+        fatigue_idx = self.cal_fatigue_idx(hrv)
         fatigue_status = self.get_fatigue_status(hrv)
-        alcohol_status = self.get_alcohol_status(parsed["alcohol"])
+        alcohol_status = self.get_alcohol_status(parsed.get("alcohol"))
+
+        if hrv > 0:
+            self.today_measurements.append(hrv)
 
         return {
             DATA_DICT_KEY["al"]: parsed["alcohol"],
-            DATA_DICT_KEY["rr"]: parsed["rr_interval"],
+            DATA_DICT_KEY["hr"]: parsed["hr"],
             DATA_DICT_KEY["hrv"]: hrv,
+            DATA_DICT_KEY["f_idx"]: fatigue_idx,
             DATA_DICT_KEY["f_st"]: fatigue_status,
             DATA_DICT_KEY["al_st"]: alcohol_status,
             DATA_DICT_KEY["raw"]: parsed,
+            DATA_DICT_KEY["base"]: self.baseline_hrv,
         }
