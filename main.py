@@ -3,23 +3,26 @@ import signal
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QTimer
 
-from wifi_communicator import UDPServerWorker
+from wifi_communicator import HTTPClientWorker
 from data_preprocessor import DataAnalyzer
 from visualizer import MonitorWindow
+
+SERVER_IP = "172.20.10.9"
+CLIENT_INTERVAL = 0.5
 
 class SystemController:
     def __init__(self):
         self.analyzer = DataAnalyzer()
         self.window = MonitorWindow()
-        self.server = UDPServerWorker()
+        self.client = HTTPClientWorker(SERVER_IP, CLIENT_INTERVAL)
         self.is_stop = False
 
-        self.server.data_received.connect(self.handle_new_data)
-        self.server.log_message.connect(lambda msg: print(f"[System] {msg}"))
+        self.client.data_received.connect(self.handle_new_data)
+        self.client.log_message.connect(lambda msg: print(f"[System] {msg}"))
 
     def start(self):
         self.window.show()
-        self.server.start()
+        self.client.start()
         
         print("★ 系統啟動完成，視窗已顯示，正在背景監聽 UDP Port 8888...")
     
@@ -30,8 +33,8 @@ class SystemController:
         print("★ 正在保存今日測量結果...")
         self.analyzer.save_daily_record()
 
-        if self.server.is_running:
-            self.server.stop()
+        if self.client.is_running:
+            self.client.stop()
         
         print("★ 系統已安全關閉。")
     
