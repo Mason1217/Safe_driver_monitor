@@ -12,6 +12,7 @@ class SystemController:
         self.analyzer = DataAnalyzer()
         self.window = MonitorWindow()
         self.server = UDPServerWorker()
+        self.is_stop = False
 
         self.server.data_received.connect(self.handle_new_data)
         self.server.log_message.connect(lambda msg: print(f"[System] {msg}"))
@@ -23,6 +24,9 @@ class SystemController:
         print("★ 系統啟動完成，視窗已顯示，正在背景監聽 UDP Port 8888...")
     
     def stop(self):
+        if self.is_stop:
+            return
+
         print("★ 正在保存今日測量結果...")
         self.analyzer.save_daily_record()
 
@@ -41,11 +45,13 @@ class SystemController:
 
 def main():
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
+
     controller = SystemController()
+    app.aboutToQuit.connect(controller.stop)
 
     def signal_handler(sig, frame):
         print("\n👋 偵測到 Ctrl+C，正在關閉程式...")
-        controller.stop()
         app.quit()
     
     signal.signal(signal.SIGINT, signal_handler)
